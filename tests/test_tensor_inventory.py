@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""CPU-only smoke test for inventory generation and fingerprinting.
-
-This script validates the core file loading and analysis pipeline on CPU without
-needing a GPU or a large model.
-"""
+"""CPU-only smoke test for FID inventory generation and fingerprinting."""
 
 from __future__ import annotations
 
 from torch import nn
 
 from fid.analysis.redundancy_detector import RedundancyDetector
+from fid.core.model_loader import ModelLoader
 from fid.core.tensor_inventory import TensorInventory
 
 
@@ -20,31 +17,29 @@ class TinyModel(nn.Module):
         self.fc2 = nn.Linear(16, 8)
 
 
-def main() -> None:
+def test_tensor_inventory_from_model() -> None:
     model = TinyModel()
     inventory = TensorInventory.from_model(model)
+    assert inventory.count() == 4
+    names = {record.name for record in inventory.as_list()}
+    assert {"fc1.weight", "fc1.bias", "fc2.weight", "fc2.bias"} <= names
+
+
+def test_redundancy_detector_compare_tensors() -> None:
     detector = RedundancyDetector()
-
-    print("CPU smoke test: FID inventory + fingerprint pipeline")
-    print(f"Inventory count: {inventory.count()}")
-    print(f"Modules: {sorted(set(t.module for t in inventory.as_list()))}")
-
-    parameter = model.fc1.weight
-    fingerprint = detector.summarize_fingerprint(parameter.detach().cpu().numpy(), name="fc1.weight", module="fc1")
-    print(
-        "Fingerprint sample: "
-        f"mean={fingerprint.mean:.4f}, std={fingerprint.std:.4f}, "
-        f"l1={fingerprint.l1_norm:.4f}, sparsity={fingerprint.sparsity:.4f}"
-    )
-
-    candidates = detector.detect_similar_modules(model, limit=5)
-    print(f"Similar-module candidates: {len(candidates)}")
-    for candidate in candidates:
-        print(
-            f"- {candidate['left_module']} vs {candidate['right_module']} "
-            f"score={candidate['score']:.4f}"
-        )
+    left = [1.0, 2.0, 3.0]
+    right = [1.02, 2.04, 3.06]
+    candidate = detector.compare_tensors(left, right, left_name="a", right_name="b")
+    assert candidate.left == "a"
+    assert candidate.right == "b"
+    assert candidate.score >= 0.0
+    assert -1.0 <= candidate.cosine_similarity <= 1.0
 
 
-if __name__ == "__main__":
-    main()
+def test_model_loader_from_torch_model() -> None:
+    model = TinyModel()
+    spec = ModelLoader.from_torch_model(model, name="tiny-model", device="cpu")
+    assert spec.model is model
+    assert spec.inventory is not None
+    assert spec.inventory.count() == 4
+    assert spec.num_parameters > 0

@@ -1,112 +1,102 @@
-"""Utilities to load models from Hugging Face and build a tensor inventory."""
+"""Tensor inventory utilities for a model graph."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-
-import torch
-from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
-
-from fid.core.tensor_inventory import TensorInventory
+from typing import Any, Dict, List
 
 
 @dataclass
-class ModelSpec:
-    """Metadata container for a loaded model instance."""
+class TensorRecord:
+    """Metadata for a single tensor in a model."""
 
     name: str
-    kind: str = "transformer"
-    revision: str = "main"
-    device: str = "cpu"
-    dtype: str = "float32"
+    shape: tuple[int, ...]
+    dtype: str
+    module: str
+    kind: str = "parameter"
     metadata: Dict[str, Any] = field(default_factory=dict)
-    model: Optional[Any] = None
-    tokenizer: Optional[Any] = None
-    inventory: Optional[TensorInventory] = None
 
 
-class ModelLoader:
-    """Load a Hugging Face model and expose its tensor inventory."""
+class TensorInventory:
+    """A lightweight inventory for tensors discovered in a model."""
 
-    def __init__(self, model_name: str, *, revision: str = "main", device: str = "cpu") -> None:
-        self.model_name = model_name
-        self.revision = revision
-        self.device = device
-        self.model: Optional[Any] = None
-        self.tokenizer: Optional[Any] = None
+    def __init__(self) -> None:
+        self._tensors: List[TensorRecord] = []
 
-    def load(self, *, trust_remote_code: bool = False) -> ModelSpec:
-        """Load a real model and build a tensor inventory.
+    @classmethod
+    def from_model(
+        cls,
+        model: Any,
+        *,
+        include_parameters: bool = True,
+        include_buffers: bool = True,
+    ) -> "TensorInventory":
+        """Build an inventory from a PyTorch module.
 
-        Strategy:
-        1. prefer a causal LM for LLM workloads,
-        2. fallback to a generic AutoModel,
-        3. move to the target device,
-        4. enumerate all parameters/buffers into a TensorInventory.
+        Parameters are prioritized because they are the main object of interest for
+        weight fingerprinting and redundancy detection. Buffers are also kept when
+        present (e.g. running statistics in normalization layers).
         """
-        resolved_device = self.device
-        if resolved_device == "cuda" and not torch.cuda.is_available():
-            resolved_device = "cpu"
+        inventory = cls()
 
-        model = None
-        try:
-            model = AutoModelForCausalLM.from_pretrained(
-                self.model_name,
-                revision=self.revision,
-                trust_remote_code=trust_remote_code,
-            )
-        except Exception:
-            try:
-                model = AutoModel.from_pretrained(
-                    self.model_name,
-                    revision=self.revision,
-                    trust_remote_code=trust_remote_code,
+        if include_parameters:
+            for name, parameter in model.named_parameters():
+                module_name = name.rsplit(".", 1)[0] if "." in name else ""
+                inventory.add_tensor(
+                    name,
+                    tuple(parameter.shape),
+                    str(parameter.dtype),
+                    module_name,
+                    kind="parameter",
+                    requires_grad=parameter.requires_grad,
                 )
-            except Exception as exc:  # pragma: no cover - env-dependent
-                raise RuntimeError(
-                    f"Unable to load model '{self.model_name}' from Hugging Face. "
-                    "Check the model name, access, and installed dependencies."
-                ) from exc
 
-        model.to(torch.device(resolved_device))
-        model.eval()
+        if include_buffers:
+            for name, buffer in model.named_buffers():
+                module_name = name.rsplit(".", 1)[0] if "." in name else ""
+                inventory.add_tensor(
+                    name,
+                    tuple(buffer.shape),
+                    str(buffer.dtype),
+                    module_name,
+                    kind="buffer",
+                )
 
-        tokenizer = None
-        try:
-            tokenizer = AutoTokenizer.from_pretrained(self.model_name, revision=self.revision)
-        except Exception:  # pragma: no cover - tokenizer optional here
-            tokenizer = None
+        return inventory
 
-        inventory = TensorInventory.from_model(model)
-        self.model = model
-        self.tokenizer = tokenizer
-
-        metadata = {
-            "loader": "transformers",
-            "source": "huggingface",
-            "num_parameters": sum(p.numel() for p in model.parameters()),
-            "num_trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
-            "inventory_count": inventory.count(),
-        }
-
-        return ModelSpec(
-            name=self.model_name,
-            kind="transformer",
-            revision=self.revision,
-            device=resolved_device,
-            dtype=str(next(model.parameters()).dtype),
-            metadata=metadata,
-            model=model,
-            tokenizer=tokenizer,
-            inventory=inventory,
+    def add_tensor(
+        self,
+        name: str,
+        shape: tuple[int, ...],
+        dtype: str,
+        module: str,
+        *,
+        kind: str = "parameter",
+        **metadata: Any,
+    ) -> None:
+        self._tensors.append(
+            TensorRecord(
+                name=name,
+                shape=shape,
+                dtype=dtype,
+                module=module,
+                kind=kind,
+                metadata=metadata,
+            )
         )
 
-    def list_modules(self) -> List[str]:
-        """Return the list of module names when a real model is loaded."""
-        if self.model is None:
-            return ["embed_tokens", "self_attn", "mlp", "lm_head"]
-        return [name for name, _ in self.model.named_modules()]
+    def as_list(self) -> List[TensorRecord]:
+        return list(self._tensors)
+
+    def count(self) -> int:
+        return len(self._tensors)
+
+    def by_module(self) -> Dict[str, List[TensorRecord]]:
+        grouped: Dict[str, List[TensorRecord]] = {}
+        for tensor in self._tensors:
+            grouped.setdefault(tensor.module, []).append(tensor)
+        return grouped
 
 
-__all__ = ["ModelLoader", "ModelSpec"]
+__all__ = ["TensorInventory", "TensorRecord"]

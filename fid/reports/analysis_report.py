@@ -1,74 +1,33 @@
-"""Command line entry points for FID."""
+"""Pretty-print report generation for FID analyses."""
 
 from __future__ import annotations
 
-import argparse
-
-from fid.analysis.redundancy_detector import RedundancyDetector
-from fid.core.model_loader import ModelLoader
-from fid.reports.analysis_report import AnalysisReport
+from typing import Any, Dict, Iterable
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="FID - Functional Information Deduplication")
-    parser.add_argument("--model", default="sshleifer/tiny-gpt2", help="Hugging Face model identifier")
-    parser.add_argument("--revision", default="main", help="Model revision or branch")
-    parser.add_argument("--device", default="cpu", help="Torch device: cpu or cuda")
-    parser.add_argument("--limit", type=int, default=10, help="Number of tensors to print in the summary")
-    parser.add_argument("--top-similar", type=int, default=5, help="Number of similar module pairs to print")
-    args = parser.parse_args()
+class AnalysisReport:
+    """Simple report builder for terminal output."""
 
-    print("FID - Functional Information Deduplication")
-    print(f"Loading model: {args.model} (rev={args.revision}, device={args.device})")
+    def __init__(self, title: str = "FID analysis report") -> None:
+        self.title = title
 
-    loader = ModelLoader(args.model, revision=args.revision, device=args.device)
-    spec = loader.load()
+    def render(self, summary: Dict[str, Any], candidates: Iterable[Dict[str, Any]] | None = None) -> str:
+        lines = [self.title, "=" * len(self.title)]
+        lines.append(f"model: {summary.get('model', 'unknown')}")
+        lines.append(f"device: {summary.get('device', 'cpu')}")
+        lines.append(f"parameters: {summary.get('parameters', 0)}")
+        lines.append(f"inventory_count: {summary.get('inventory_count', 0)}")
 
-    inventory = spec.inventory
-    if inventory is None:
-        raise RuntimeError("Tensor inventory was not created. The model could not be loaded properly.")
-
-    summary = {
-        "model": spec.name,
-        "device": spec.device,
-        "parameters": spec.metadata.get("num_parameters", 0),
-        "inventory_count": inventory.count(),
-    }
-
-    print("Model loaded successfully.")
-    print(f"Kind: {spec.kind}")
-    print(f"Parameters: {summary['parameters']}")
-    print(f"Tensor inventory entries: {inventory.count()}")
-    print(f"Modules discovered: {len(loader.list_modules())}")
-    print("Sample tensors:")
-    for record in inventory.as_list()[: args.limit]:
-        print(f"- {record.name} | module={record.module} | shape={record.shape} | dtype={record.dtype}")
-
-    detector = RedundancyDetector()
-    fingerprints = detector.fingerprints_from_model(spec.model)
-    if fingerprints:
-        print("\nFingerprint summary:")
-        for fp in fingerprints[: args.limit]:
-            print(
-                f"- {fp.name} | module={fp.module} | mean={fp.mean:.5f} | "
-                f"std={fp.std:.5f} | l1={fp.l1_norm:.5f} | sparsity={fp.sparsity:.3f}"
-            )
-
-        similar = detector.detect_similar_modules(spec.model, limit=args.top_similar)
-        moe_candidates = detector.detect_moe_experts(spec.model, limit=args.top_similar)
-        report = AnalysisReport()
-        rendered = report.render(summary, similar)
-        print("\n" + rendered)
-        if moe_candidates:
-            print("\nPossible MoE expert candidates:")
-            for candidate in moe_candidates:
-                print(
-                    f"- {candidate['left_expert']} vs {candidate['right_expert']} "
-                    f"| score={candidate['score']:.4f}"
+        if candidates is not None:
+            lines.append("\nSimilar module candidates:")
+            for index, candidate in enumerate(candidates, start=1):
+                left_name = candidate.get("left_module", candidate.get("left_expert", "?"))
+                right_name = candidate.get("right_module", candidate.get("right_expert", "?"))
+                lines.append(
+                    f"{index}. {left_name} vs {right_name} | score={candidate.get('score', 0.0):.4f}"
                 )
-    else:
-        print("No parameter fingerprints could be computed for this model.")
+
+        return "\n".join(lines)
 
 
-if __name__ == "__main__":
-    main()
+__all__ = ["AnalysisReport"]

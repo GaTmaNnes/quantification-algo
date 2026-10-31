@@ -1,32 +1,89 @@
-"""Pretty-print report generation for FID analyses."""
+# FID — Functional Information Deduplication
 
-from __future__ import annotations
+A small research prototype to inventory tensor parameters, compute simple weight fingerprints and compare modules for potential redundancy, with a first focus on Hugging Face models and MoE-style experts.
 
-from typing import Any, Dict, Iterable
+## Goals
 
+- Load a real model from Hugging Face on CPU.
+- Inventory parameters and buffers automatically.
+- Compute lightweight fingerprints across tensors.
+- Detect similar modules and expert-like patterns.
+- Expose a fast CLI for local experimentation.
 
-class AnalysisReport:
-    """Simple report builder for terminal output."""
+## Project structure
 
-    def __init__(self, title: str = "FID analysis report") -> None:
-        self.title = title
+```text
+quantification-algo/
+├── fid/
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── cli.py
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── model_loader.py
+│   │   └── tensor_inventory.py
+│   ├── analysis/
+│   │   ├── __init__.py
+│   │   ├── functional_similarity.py
+│   │   ├── redundancy_detector.py
+│   │   └── weight_fingerprint.py
+│   └── reports/
+│       └── analysis_report.py
+├── scripts/
+│   ├── check_environment.py
+│   ├── run_cpu_check.py
+│   ├── run_demo.py
+│   └── setup.sh
+├── tests/
+│   ├── test_tensor_inventory.py
+│   └── test_redundancy_detector.py
+├── examples/
+│   └── quickstart.py
+├── LICENSE
+├── Makefile
+├── README.md
+├── requirements.txt
+└── .gitignore
+```
 
-    def render(self, summary: Dict[str, Any], candidates: Iterable[Dict[str, Any]] | None = None) -> str:
-        lines = [self.title, "=" * len(self.title)]
-        lines.append(f"model: {summary.get('model', 'unknown')}")
-        lines.append(f"device: {summary.get('device', 'cpu')}")
-        lines.append(f"parameters: {summary.get('parameters', 0)}")
-        lines.append(f"inventory_count: {summary.get('inventory_count', 0)}")
+## Installation
 
-        if candidates is not None:
-            lines.append("\nSimilar module candidates:")
-            for index, candidate in enumerate(candidates, start=1):
-                lines.append(
-                    f"{index}. {candidate.get('left_module', '?')} vs {candidate.get('right_module', '?')} "
-                    f"| score={candidate.get('score', 0.0):.4f}"
-                )
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
 
-        return "\n".join(lines)
+## Quick validation
 
+```bash
+python scripts/check_environment.py
+pytest -q
+```
 
-__all__ = ["AnalysisReport"]
+## Real model analysis
+
+```bash
+python -m fid --model sshleifer/tiny-gpt2 --device cpu --limit 10 --top-similar 5
+```
+
+This loads a tiny GPT-2 model from Hugging Face, inventories its tensors and prints a short redundancy summary.
+
+## Example usage in Python
+
+```python
+from fid.core.model_loader import ModelLoader
+from fid.analysis.redundancy_detector import RedundancyDetector
+
+loader = ModelLoader("sshleifer/tiny-gpt2", device="cpu")
+spec = loader.load()
+
+detector = RedundancyDetector()
+print(spec.inventory.count())
+print(detector.fingerprints_from_model(spec.model)[0])
+```
+
+## Notes
+
+This is intentionally incremental and research-oriented: the goal is not to perform a full MoE optimization yet, but to provide a robust base for tensor exploration, weight characterization and module comparison.

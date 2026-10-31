@@ -1,5 +1,7 @@
 """quantification-algo package."""
 
-from .cli import main
+from __future__ import annotations
+
+from fid.cli import main
 
 __all__ = ["main"]
