@@ -11,6 +11,7 @@ REQUIRED = [
     "networkx",
     "torch",
     "transformers",
+    "huggingface_hub",
 ]
 
 missing = []
