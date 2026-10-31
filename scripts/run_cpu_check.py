@@ -1,30 +1,29 @@
-"""Quick example for the FID analysis workflow."""
+"""Tests for redundancy comparisons."""
 
 from __future__ import annotations
 
+import numpy as np
+
 from fid.analysis.redundancy_detector import RedundancyDetector
-from fid.core.model_loader import ModelLoader
 
 
-def main() -> None:
-    model_name = "sshleifer/tiny-gpt2"
-    loader = ModelLoader(model_name, device="cpu")
-    spec = loader.load()
-    inventory = spec.inventory
-
-    print(f"Model: {spec.name}")
-    print(f"Inventory entries: {inventory.count() if inventory else 0}")
-    if inventory is not None:
-        for record in inventory.as_list()[:5]:
-            print(f"- {record.name} | {record.module} | {record.shape}")
-
+def test_compare_tensors_similarity() -> None:
     detector = RedundancyDetector()
-    fingerprints = detector.fingerprints_from_model(spec.model)
-    print(f"Computed {len(fingerprints)} fingerprints.")
-    if fingerprints:
-        for fp in fingerprints[:3]:
-            print(f"{fp.name}: mean={fp.mean:.4f}, std={fp.std:.4f}, l1={fp.l1_norm:.4f}")
+    left = np.ones((4, 4), dtype=np.float64)
+    right = 1.05 * np.ones((4, 4), dtype=np.float64)
+    candidate = detector.compare_tensors(left, right, left_name="a", right_name="b")
+
+    assert candidate.score >= 0.0
+    assert candidate.left == "a"
+    assert candidate.right == "b"
 
 
-if __name__ == "__main__":
-    main()
+def test_module_signature_distance() -> None:
+    detector = RedundancyDetector()
+    left = np.ones((4, 4), dtype=np.float64)
+    right = 1.0 + 0.01 * np.ones((4, 4), dtype=np.float64)
+    result = detector.compare_tensors(left, right)
+
+    assert result.relative_error >= 0.0
+    assert result.cosine_similarity <= 1.0
+    assert result.cosine_similarity >= -1.0

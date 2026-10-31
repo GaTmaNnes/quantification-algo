@@ -63,7 +63,7 @@ class ModelLoader:
                     revision=self.revision,
                     trust_remote_code=trust_remote_code,
                 )
-            except Exception as exc:  # pragma: no cover - network- or env-dependent
+            except Exception as exc:  # pragma: no cover - env-dependent
                 raise RuntimeError(
                     f"Unable to load model '{self.model_name}' from Hugging Face. "
                     "Check the model name, access, and installed dependencies."
@@ -75,7 +75,7 @@ class ModelLoader:
         tokenizer = None
         try:
             tokenizer = AutoTokenizer.from_pretrained(self.model_name, revision=self.revision)
-        except Exception:  # pragma: no cover - tokenizer is optional here
+        except Exception:  # pragma: no cover - tokenizer optional here
             tokenizer = None
 
         inventory = TensorInventory.from_model(model)

@@ -55,9 +55,17 @@ def main() -> None:
             )
 
         similar = detector.detect_similar_modules(spec.model, limit=args.top_similar)
+        moe_candidates = detector.detect_moe_experts(spec.model, limit=args.top_similar)
         report = AnalysisReport()
         rendered = report.render(summary, similar)
         print("\n" + rendered)
+        if moe_candidates:
+            print("\nPossible MoE expert candidates:")
+            for candidate in moe_candidates:
+                print(
+                    f"- {candidate['left_expert']} vs {candidate['right_expert']} "
+                    f"| score={candidate['score']:.4f}"
+                )
     else:
         print("No parameter fingerprints could be computed for this model.")
 

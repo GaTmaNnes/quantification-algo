@@ -1,37 +1,32 @@
-"""Tests for the FID tensor inventory."""
+"""Pretty-print report generation for FID analyses."""
 
 from __future__ import annotations
 
-from torch import nn
-
-from fid.core.tensor_inventory import TensorInventory
+from typing import Any, Dict, Iterable
 
 
-class TinyModel(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.linear1 = nn.Linear(4, 8)
-        self.linear2 = nn.Linear(8, 2)
+class AnalysisReport:
+    """Simple report builder for terminal output."""
+
+    def __init__(self, title: str = "FID analysis report") -> None:
+        self.title = title
+
+    def render(self, summary: Dict[str, Any], candidates: Iterable[Dict[str, Any]] | None = None) -> str:
+        lines = [self.title, "=" * len(self.title)]
+        lines.append(f"model: {summary.get('model', 'unknown')}")
+        lines.append(f"device: {summary.get('device', 'cpu')}")
+        lines.append(f"parameters: {summary.get('parameters', 0)}")
+        lines.append(f"inventory_count: {summary.get('inventory_count', 0)}")
+
+        if candidates is not None:
+            lines.append("\nSimilar module candidates:")
+            for index, candidate in enumerate(candidates, start=1):
+                lines.append(
+                    f"{index}. {candidate.get('left_module', '?')} vs {candidate.get('right_module', '?')} "
+                    f"| score={candidate.get('score', 0.0):.4f}"
+                )
+
+        return "\n".join(lines)
 
 
-def test_tensor_inventory_from_model() -> None:
-    model = TinyModel()
-    inventory = TensorInventory.from_model(model)
-
-    assert inventory.count() == 4
-    names = {tensor.name for tensor in inventory.as_list()}
-    assert "linear1.weight" in names
-    assert "linear1.bias" in names
-    assert "linear2.weight" in names
-    assert "linear2.bias" in names
-
-
-def test_group_by_module() -> None:
-    model = TinyModel()
-    inventory = TensorInventory.from_model(model)
-    grouped = inventory.group_by_module()
-
-    assert "linear1" in grouped
-    assert "linear2" in grouped
-    assert len(grouped["linear1"]) == 2
-    assert len(grouped["linear2"]) == 2
+__all__ = ["AnalysisReport"]
