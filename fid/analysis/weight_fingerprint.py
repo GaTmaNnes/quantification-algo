@@ -1,32 +1,80 @@
-"""Pretty-print report generation for FID analyses."""
+"""Tensor inventory utilities for a model graph."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
 
 
-class AnalysisReport:
-    """Simple report builder for terminal output."""
+@dataclass
+class TensorRecord:
+    """Metadata for a single tensor in a model."""
 
-    def __init__(self, title: str = "FID analysis report") -> None:
-        self.title = title
+    name: str
+    shape: tuple[int, ...]
+    dtype: str
+    module: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
-    def render(self, summary: Dict[str, Any], candidates: Iterable[Dict[str, Any]] | None = None) -> str:
-        lines = [self.title, "=" * len(self.title)]
-        lines.append(f"model: {summary.get('model', 'unknown')}")
-        lines.append(f"device: {summary.get('device', 'cpu')}")
-        lines.append(f"parameters: {summary.get('parameters', 0)}")
-        lines.append(f"inventory_count: {summary.get('inventory_count', 0)}")
 
-        if candidates is not None:
-            lines.append("\nSimilar module candidates:")
-            for index, candidate in enumerate(candidates, start=1):
-                lines.append(
-                    f"{index}. {candidate.get('left_module', '?')} vs {candidate.get('right_module', '?')} "
-                    f"| score={candidate.get('score', 0.0):.4f}"
+class TensorInventory:
+    """A lightweight inventory for tensors discovered in a model."""
+
+    def __init__(self) -> None:
+        self._tensors: List[TensorRecord] = []
+
+    def add_tensor(self, name: str, shape: tuple[int, ...], dtype: str, module: str, **metadata: Any) -> None:
+        self._tensors.append(
+            TensorRecord(
+                name=name,
+                shape=shape,
+                dtype=dtype,
+                module=module,
+                metadata=metadata,
+            )
+        )
+
+    @classmethod
+    def from_model(cls, model: Any) -> "TensorInventory":
+        """Populate an inventory from a real PyTorch or Hugging Face model."""
+        inventory = cls()
+
+        for name, param in model.named_parameters():
+            module_name = name.rsplit(".", 1)[0] if "." in name else ""
+            inventory.add_tensor(
+                name=name,
+                shape=tuple(param.shape),
+                dtype=str(param.dtype),
+                module=module_name,
+                kind="parameter",
+            )
+
+        if hasattr(model, "named_buffers"):
+            for name, buffer in model.named_buffers():
+                if buffer is None:
+                    continue
+                module_name = name.rsplit(".", 1)[0] if "." in name else ""
+                inventory.add_tensor(
+                    name=name,
+                    shape=tuple(buffer.shape),
+                    dtype=str(buffer.dtype),
+                    module=module_name,
+                    kind="buffer",
                 )
 
-        return "\n".join(lines)
+        return inventory
+
+    def as_list(self) -> List[TensorRecord]:
+        return list(self._tensors)
+
+    def count(self) -> int:
+        return len(self._tensors)
+
+    def group_by_module(self) -> Dict[str, List[TensorRecord]]:
+        grouped: Dict[str, List[TensorRecord]] = {}
+        for tensor in self._tensors:
+            grouped.setdefault(tensor.module, []).append(tensor)
+        return grouped
 
 
-__all__ = ["AnalysisReport"]
+__all__ = ["TensorInventory", "TensorRecord"]

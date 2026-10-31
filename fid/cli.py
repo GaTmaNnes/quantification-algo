@@ -1,80 +1,133 @@
-"""Tensor inventory utilities for a model graph."""
+"""Redundancy detection and comparison logic."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections import defaultdict
+from dataclasses import dataclass
 from typing import Any, Dict, List
+
+import numpy as np
+
+from fid.analysis.weight_fingerprint import WeightFingerprint
+from fid.core.tensor_inventory import TensorInventory
 
 
 @dataclass
-class TensorRecord:
-    """Metadata for a single tensor in a model."""
+class RedundancyCandidate:
+    """Candidate pair flagged as potentially redundant."""
 
-    name: str
-    shape: tuple[int, ...]
-    dtype: str
-    module: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    left: str
+    right: str
+    relative_error: float
+    cosine_similarity: float
+    score: float
+    notes: str = ""
 
 
-class TensorInventory:
-    """A lightweight inventory for tensors discovered in a model."""
+class RedundancyDetector:
+    """Lightweight redundancy detector for early model analysis."""
 
-    def __init__(self) -> None:
-        self._tensors: List[TensorRecord] = []
+    def __init__(self, *, eps: float = 1e-8) -> None:
+        self.eps = eps
 
-    def add_tensor(self, name: str, shape: tuple[int, ...], dtype: str, module: str, **metadata: Any) -> None:
-        self._tensors.append(
-            TensorRecord(
-                name=name,
-                shape=shape,
-                dtype=dtype,
-                module=module,
-                metadata=metadata,
-            )
+    def relative_error(self, left: Any, right: Any) -> float:
+        left_array = np.asarray(left, dtype=np.float64).reshape(-1)
+        right_array = np.asarray(right, dtype=np.float64).reshape(-1)
+        diff = np.linalg.norm(left_array - right_array)
+        denom = np.linalg.norm(left_array) + self.eps
+        return float(diff / denom)
+
+    def cosine_similarity(self, left: Any, right: Any) -> float:
+        left_array = np.asarray(left, dtype=np.float64).reshape(-1)
+        right_array = np.asarray(right, dtype=np.float64).reshape(-1)
+        numerator = float(np.dot(left_array, right_array))
+        denom = np.linalg.norm(left_array) * np.linalg.norm(right_array)
+        if np.isclose(denom, 0.0):
+            return 0.0
+        return float(numerator / denom)
+
+    def compare_tensors(self, left: Any, right: Any, *, left_name: str = "left", right_name: str = "right") -> RedundancyCandidate:
+        relative_error = self.relative_error(left, right)
+        cosine_similarity = self.cosine_similarity(left, right)
+        score = 1.0 - min(1.0, relative_error)
+
+        if cosine_similarity > 0.99:
+            notes = "high representational similarity"
+        elif relative_error < 0.05:
+            notes = "low functional discrepancy"
+        else:
+            notes = "requires further validation"
+
+        return RedundancyCandidate(
+            left=left_name,
+            right=right_name,
+            relative_error=relative_error,
+            cosine_similarity=cosine_similarity,
+            score=score,
+            notes=notes,
         )
 
-    @classmethod
-    def from_model(cls, model: Any) -> "TensorInventory":
-        """Populate an inventory from a real PyTorch or Hugging Face model."""
-        inventory = cls()
+    def summarize_fingerprint(self, tensor: Any, *, name: str = "tensor", module: str = "") -> WeightFingerprint:
+        return WeightFingerprint.from_array(name, tensor, module=module)
 
-        for name, param in model.named_parameters():
-            module_name = name.rsplit(".", 1)[0] if "." in name else ""
-            inventory.add_tensor(
-                name=name,
-                shape=tuple(param.shape),
-                dtype=str(param.dtype),
-                module=module_name,
-                kind="parameter",
-            )
+    def fingerprints_from_model(self, model: Any) -> List[WeightFingerprint]:
+        inventory = TensorInventory.from_model(model)
+        fingerprints: List[WeightFingerprint] = []
+        for record in inventory.as_list():
+            parameter = None
+            try:
+                parameter = model.get_parameter(record.name)
+            except Exception:
+                parameter = None
+            if parameter is not None:
+                fingerprints.append(WeightFingerprint.from_parameter(record.name, parameter, module=record.module))
+        return fingerprints
 
-        if hasattr(model, "named_buffers"):
-            for name, buffer in model.named_buffers():
-                if buffer is None:
-                    continue
-                module_name = name.rsplit(".", 1)[0] if "." in name else ""
-                inventory.add_tensor(
-                    name=name,
-                    shape=tuple(buffer.shape),
-                    dtype=str(buffer.dtype),
-                    module=module_name,
-                    kind="buffer",
+    def detect_similar_modules(self, model: Any, *, limit: int = 10) -> List[Dict[str, Any]]:
+        """Compare module-level signatures heuristically to spot similar blocks."""
+        inventory = TensorInventory.from_model(model)
+        by_module: Dict[str, List[WeightFingerprint]] = defaultdict(list)
+
+        for record in inventory.as_list():
+            parameter = None
+            try:
+                parameter = model.get_parameter(record.name)
+            except Exception:
+                parameter = None
+            if parameter is not None:
+                by_module[record.module].append(
+                    WeightFingerprint.from_parameter(record.name, parameter, module=record.module)
                 )
 
-        return inventory
+        results: List[Dict[str, Any]] = []
+        module_names = sorted(by_module)
+        for i, left_name in enumerate(module_names):
+            left = by_module[left_name]
+            if not left:
+                continue
+            left_mean = np.mean([fp.abs_mean for fp in left])
+            left_std = np.mean([fp.std for fp in left])
+            for right_name in module_names[i + 1 :]:
+                right = by_module[right_name]
+                if not right:
+                    continue
+                right_mean = np.mean([fp.abs_mean for fp in right])
+                right_std = np.mean([fp.std for fp in right])
 
-    def as_list(self) -> List[TensorRecord]:
-        return list(self._tensors)
+                relative_gap = abs(left_mean - right_mean) / (abs(left_mean) + self.eps)
+                variance_gap = abs(left_std - right_std) / (left_std + self.eps)
+                if relative_gap < 0.5 and variance_gap < 0.5:
+                    results.append(
+                        {
+                            "left_module": left_name,
+                            "right_module": right_name,
+                            "mean_abs_gap": float(relative_gap),
+                            "std_gap": float(variance_gap),
+                            "score": float(1.0 - min(1.0, relative_gap + variance_gap)),
+                        }
+                    )
 
-    def count(self) -> int:
-        return len(self._tensors)
-
-    def group_by_module(self) -> Dict[str, List[TensorRecord]]:
-        grouped: Dict[str, List[TensorRecord]] = {}
-        for tensor in self._tensors:
-            grouped.setdefault(tensor.module, []).append(tensor)
-        return grouped
+        return sorted(results, key=lambda entry: entry["score"], reverse=True)[:limit]
 
 
-__all__ = ["TensorInventory", "TensorRecord"]
+__all__ = ["RedundancyCandidate", "RedundancyDetector"]
