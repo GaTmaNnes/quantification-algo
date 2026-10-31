@@ -1,27 +1,30 @@
-"""Tests for the FID tensor inventory."""
+"""Quick example for the FID analysis workflow."""
 
 from __future__ import annotations
 
-import torch
-from torch import nn
-
-from fid.core.tensor_inventory import TensorInventory
+from fid.analysis.redundancy_detector import RedundancyDetector
+from fid.core.model_loader import ModelLoader
 
 
-class TinyModel(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.linear1 = nn.Linear(4, 8)
-        self.linear2 = nn.Linear(8, 2)
+def main() -> None:
+    model_name = "sshleifer/tiny-gpt2"
+    loader = ModelLoader(model_name, device="cpu")
+    spec = loader.load()
+    inventory = spec.inventory
+
+    print(f"Model: {spec.name}")
+    print(f"Inventory entries: {inventory.count() if inventory else 0}")
+    if inventory is not None:
+        for record in inventory.as_list()[:5]:
+            print(f"- {record.name} | {record.module} | {record.shape}")
+
+    detector = RedundancyDetector()
+    fingerprints = detector.fingerprints_from_model(spec.model)
+    print(f"Computed {len(fingerprints)} fingerprints.")
+    if fingerprints:
+        for fp in fingerprints[:3]:
+            print(f"{fp.name}: mean={fp.mean:.4f}, std={fp.std:.4f}, l1={fp.l1_norm:.4f}")
 
 
-def test_tensor_inventory_from_model() -> None:
-    model = TinyModel()
-    inventory = TensorInventory.from_model(model)
-
-    assert inventory.count() == 4
-    names = {tensor.name for tensor in inventory.as_list()}
-    assert "linear1.weight" in names
-    assert "linear1.bias" in names
-    assert "linear2.weight" in names
-    assert "linear2.bias" in names
+if __name__ == "__main__":
+    main()

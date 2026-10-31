@@ -1,44 +1,111 @@
-"""Tensor inventory utilities for a model graph."""
+"""Utilities to load models from Hugging Face and test checkpoints."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+import torch
+from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
+
+from fid.core.tensor_inventory import TensorInventory
 
 
 @dataclass
-class TensorRecord:
-    """Metadata for a single tensor in a model."""
+class ModelSpec:
+    """Metadata container for a loaded model instance."""
 
     name: str
-    shape: tuple[int, ...]
-    dtype: str
-    module: str
+    kind: str = "transformer"
+    revision: str = "main"
+    device: str = "cpu"
+    dtype: str = "float32"
     metadata: Dict[str, Any] = field(default_factory=dict)
+    model: Optional[Any] = None
+    tokenizer: Optional[Any] = None
+    inventory: Optional[TensorInventory] = None
 
 
-class TensorInventory:
-    """A lightweight inventory for tensors discovered in a model."""
+class ModelLoader:
+    """Load a Hugging Face model and expose its tensor inventory."""
 
-    def __init__(self) -> None:
-        self._tensors: List[TensorRecord] = []
+    def __init__(self, model_name: str, *, revision: str = "main", device: str = "cpu") -> None:
+        self.model_name = model_name
+        self.revision = revision
+        self.device = device
+        self.model: Optional[Any] = None
+        self.tokenizer: Optional[Any] = None
 
-    def add_tensor(self, name: str, shape: tuple[int, ...], dtype: str, module: str, **metadata: Any) -> None:
-        self._tensors.append(
-            TensorRecord(
-                name=name,
-                shape=shape,
-                dtype=dtype,
-                module=module,
-                metadata=metadata,
+    def load(self, *, trust_remote_code: bool = False) -> ModelSpec:
+        """Load a real model and build a tensor inventory.
+
+        The strategy is intentionally simple but practical:
+        1. try a causal LM first, then generic AutoModel,
+        2. move the model to device,
+        3. build an inventory of parameters and buffers.
+        """
+        resolved_device = self.device
+        if resolved_device == "cuda" and not torch.cuda.is_available():
+            resolved_device = "cpu"
+
+        model = None
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                revision=self.revision,
+                trust_remote_code=trust_remote_code,
             )
+        except Exception:
+            try:
+                model = AutoModel.from_pretrained(
+                    self.model_name,
+                    revision=self.revision,
+                    trust_remote_code=trust_remote_code,
+                )
+            except Exception as exc:  # pragma: no cover - environment-dependent
+                raise RuntimeError(
+                    f"Unable to load model '{self.model_name}' from Hugging Face. "
+                    "Check the model name, permissions, and installed dependencies."
+                ) from exc
+
+        model.to(torch.device(resolved_device))
+        model.eval()
+
+        tokenizer = None
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(self.model_name, revision=self.revision)
+        except Exception:  # pragma: no cover - optional tokenizer
+            tokenizer = None
+
+        inventory = TensorInventory.from_model(model)
+        self.model = model
+        self.tokenizer = tokenizer
+
+        metadata = {
+            "loader": "transformers",
+            "source": "huggingface",
+            "num_parameters": sum(p.numel() for p in model.parameters()),
+            "num_trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
+            "inventory_count": inventory.count(),
+        }
+
+        return ModelSpec(
+            name=self.model_name,
+            kind="transformer",
+            revision=self.revision,
+            device=resolved_device,
+            dtype=str(next(model.parameters()).dtype),
+            metadata=metadata,
+            model=model,
+            tokenizer=tokenizer,
+            inventory=inventory,
         )
 
-    def as_list(self) -> List[TensorRecord]:
-        return list(self._tensors)
+    def list_modules(self) -> List[str]:
+        """Return the list of module names when a real model is loaded."""
+        if self.model is None:
+            return ["embed_tokens", "self_attn", "mlp", "lm_head"]
+        return [name for name, _ in self.model.named_modules()]
 
-    def count(self) -> int:
-        return len(self._tensors)
 
-
-__all__ = ["TensorInventory", "TensorRecord"]
+__all__ = ["ModelLoader", "ModelSpec"]

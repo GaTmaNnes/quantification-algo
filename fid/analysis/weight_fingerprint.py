@@ -1,58 +1,80 @@
-"""Weight fingerprinting utilities."""
+"""Tensor inventory utilities for a model graph."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Sequence
-
-import numpy as np
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
 
 
 @dataclass
-class WeightFingerprint:
-    """A simplified fingerprint summarizing tensor-level statistics."""
+class TensorRecord:
+    """Metadata for a single tensor in a model."""
 
     name: str
     shape: tuple[int, ...]
-    mean: float
-    std: float
-    l1_norm: float
-    l2_norm: float
-    sparsity: float
-    metadata: Dict[str, Any]
+    dtype: str
+    module: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
-    @classmethod
-    def from_array(cls, name: str, array: Any, *, module: str = "") -> "WeightFingerprint":
-        values = np.asarray(array, dtype=np.float64)
-        flat = values.reshape(-1)
-        mean = float(np.mean(flat))
-        std = float(np.std(flat))
-        l1_norm = float(np.sum(np.abs(flat)))
-        l2_norm = float(np.linalg.norm(flat))
-        sparsity = float(np.mean(np.abs(flat) < 1e-8))
-        metadata = {"module": module}
-        return cls(
-            name=name,
-            shape=tuple(values.shape),
-            mean=mean,
-            std=std,
-            l1_norm=l1_norm,
-            l2_norm=l2_norm,
-            sparsity=sparsity,
-            metadata=metadata,
+
+class TensorInventory:
+    """A lightweight inventory for tensors discovered in a model."""
+
+    def __init__(self) -> None:
+        self._tensors: List[TensorRecord] = []
+
+    def add_tensor(self, name: str, shape: tuple[int, ...], dtype: str, module: str, **metadata: Any) -> None:
+        self._tensors.append(
+            TensorRecord(
+                name=name,
+                shape=shape,
+                dtype=dtype,
+                module=module,
+                metadata=metadata,
+            )
         )
 
-    def as_dict(self) -> Dict[str, Any]:
-        return {
-            "name": self.name,
-            "shape": self.shape,
-            "mean": self.mean,
-            "std": self.std,
-            "l1_norm": self.l1_norm,
-            "l2_norm": self.l2_norm,
-            "sparsity": self.sparsity,
-            "metadata": self.metadata,
-        }
+    @classmethod
+    def from_model(cls, model: Any) -> "TensorInventory":
+        """Populate an inventory from a real PyTorch or HF model."""
+        inventory = cls()
+
+        for name, param in model.named_parameters():
+            module_name = name.rsplit(".", 1)[0] if "." in name else ""
+            inventory.add_tensor(
+                name=name,
+                shape=tuple(param.shape),
+                dtype=str(param.dtype),
+                module=module_name,
+                kind="parameter",
+            )
+
+        if hasattr(model, "named_buffers"):
+            for name, buffer in model.named_buffers():
+                if buffer is None:
+                    continue
+                module_name = name.rsplit(".", 1)[0] if "." in name else ""
+                inventory.add_tensor(
+                    name=name,
+                    shape=tuple(buffer.shape),
+                    dtype=str(buffer.dtype),
+                    module=module_name,
+                    kind="buffer",
+                )
+
+        return inventory
+
+    def as_list(self) -> List[TensorRecord]:
+        return list(self._tensors)
+
+    def count(self) -> int:
+        return len(self._tensors)
+
+    def group_by_module(self) -> Dict[str, List[TensorRecord]]:
+        grouped: Dict[str, List[TensorRecord]] = {}
+        for tensor in self._tensors:
+            grouped.setdefault(tensor.module, []).append(tensor)
+        return grouped
 
 
-__all__ = ["WeightFingerprint"]
+__all__ = ["TensorInventory", "TensorRecord"]
