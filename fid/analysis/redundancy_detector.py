@@ -10,7 +10,7 @@ import numpy as np
 
 @dataclass
 class WeightFingerprint:
-    """A small but useful summary of a weight tensor."""
+    """A compact statistical summary for a weight tensor."""
 
     name: str
     module: str
@@ -31,14 +31,15 @@ class WeightFingerprint:
     def from_array(cls, name: str, array: Any, *, module: str = "", dtype: str = "float32") -> "WeightFingerprint":
         values = np.asarray(array, dtype=np.float64)
         flat = values.reshape(-1)
-        mean = float(np.mean(flat))
-        std = float(np.std(flat))
-        variance = float(np.var(flat))
-        abs_mean = float(np.mean(np.abs(flat)))
-        l1_norm = float(np.sum(np.abs(flat)))
-        l2_norm = float(np.linalg.norm(flat))
+        mean = float(np.mean(flat)) if flat.size else 0.0
+        std = float(np.std(flat)) if flat.size else 0.0
+        variance = float(np.var(flat)) if flat.size else 0.0
+        abs_mean = float(np.mean(np.abs(flat))) if flat.size else 0.0
+        l1_norm = float(np.sum(np.abs(flat))) if flat.size else 0.0
+        l2_norm = float(np.linalg.norm(flat)) if flat.size else 0.0
         max_abs = float(np.max(np.abs(flat))) if flat.size else 0.0
         sparsity = float(np.mean(np.abs(flat) < 1e-8)) if flat.size else 0.0
+
         return cls(
             name=name,
             module=module,

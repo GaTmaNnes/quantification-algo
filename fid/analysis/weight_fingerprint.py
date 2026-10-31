@@ -36,7 +36,7 @@ class TensorInventory:
 
     @classmethod
     def from_model(cls, model: Any) -> "TensorInventory":
-        """Populate an inventory from a real PyTorch or HF model."""
+        """Populate an inventory from a real PyTorch or Hugging Face model."""
         inventory = cls()
 
         for name, param in model.named_parameters():

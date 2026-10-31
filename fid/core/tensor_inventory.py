@@ -1,4 +1,4 @@
-"""Utilities to load models from Hugging Face and test checkpoints."""
+"""Utilities to load models from Hugging Face and build a tensor inventory."""
 
 from __future__ import annotations
 
@@ -39,10 +39,11 @@ class ModelLoader:
     def load(self, *, trust_remote_code: bool = False) -> ModelSpec:
         """Load a real model and build a tensor inventory.
 
-        The strategy is intentionally simple but practical:
-        1. try a causal LM first, then generic AutoModel,
-        2. move the model to device,
-        3. build an inventory of parameters and buffers.
+        Strategy:
+        1. prefer a causal LM for LLM workloads,
+        2. fallback to a generic AutoModel,
+        3. move to the target device,
+        4. enumerate all parameters/buffers into a TensorInventory.
         """
         resolved_device = self.device
         if resolved_device == "cuda" and not torch.cuda.is_available():
@@ -62,10 +63,10 @@ class ModelLoader:
                     revision=self.revision,
                     trust_remote_code=trust_remote_code,
                 )
-            except Exception as exc:  # pragma: no cover - environment-dependent
+            except Exception as exc:  # pragma: no cover - network- or env-dependent
                 raise RuntimeError(
                     f"Unable to load model '{self.model_name}' from Hugging Face. "
-                    "Check the model name, permissions, and installed dependencies."
+                    "Check the model name, access, and installed dependencies."
                 ) from exc
 
         model.to(torch.device(resolved_device))
@@ -74,7 +75,7 @@ class ModelLoader:
         tokenizer = None
         try:
             tokenizer = AutoTokenizer.from_pretrained(self.model_name, revision=self.revision)
-        except Exception:  # pragma: no cover - optional tokenizer
+        except Exception:  # pragma: no cover - tokenizer is optional here
             tokenizer = None
 
         inventory = TensorInventory.from_model(model)
