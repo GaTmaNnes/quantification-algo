@@ -856,5 +856,77 @@ COMPRENDRE LES CALCULS ET LES INFORMATIONS QU’ILS
 REPRESENTENT, PUIS RECONSTRUIRE UNE ARCHITECTURE
 QUI LES CALCULE AVEC LE MOINS DE RESSOURCES POSSIBLE.
 
+
+Similarité purement statistique vs fonctionnelle réelle
+Les empreintes actuelles (distribution, sparsity, cosine) capturent des redondances numériques/structurelles, mais pas forcément l'équivalence algorithmique ou fonctionnelle (même transformation input>output sur des données réelles). Deux modules peuvent avoir des poids très différents mais calculer quasi la même chose (ou l'inverse).
+
+2. Absence d'analyse dynamique / activation-based
+Tout repose sur les poids statiques. Or la littérature montre que la redondance réelle apparaît souvent au niveau des activations, du routing MoE, ou des chemins de calcul (
+
+Spécificité MoE sous-exploité
+Le projet mentionne MoE, mais le code de base ne semble pas encore traiter le routing, le co-activation des experts, les experts "morts", ni le partage cross-layer.
+4. Pas de métrique de "coût réel" ni de compression actionnable
+Détecter une redondance est une chose ; quantifier le gain réel (FLOPs, mémoire, latence) et proposer une fusion/pruning/sharing safe en est une autre.
+5. Scalabilité et validation limitée
+Tests sur tiny-gpt2 / CPU. Pas encore de benchmarks sur de vrais MoE (Mixtral, DeepSeek-MoE, etc.) ni de mesures de downstream impact après fusion.
+6. Manque de distances
+Cosine et relative error collapsent en haute dimension. Les méthodes modernes utilisent Gromov-Wasserstein, CKA, SVD/spectral fingerprints, ou équivalence différentielle.
+7. Pas encore de graphe de calcul / circuit discovery
+L'extracteur de graphe est présent, mais l'analyse reste au niveau module/ tenseur plutôt qu'au niveau des chemins de calcul interchangeables.
+Croisement avec la littérature
+
+Redondance MoE & partage d'experts
+• Meta Expert : Cross-Layer Expert
+Sharing → https://arxiv.org/abs/.
+2610.27598 (les experts inter-couches sont souvent redondants ; partager des
+"Meta Experts" permet d'atteindre les perfs d'un MoE vanilla avec seulement 70-80 % des experts).
+• Neuronal Redundancy Reduction for
+PEFT-MoE → https://aclanthology.org/
+2026.emnlp-main.2027l.
+• Exploiting MoE Redundancy for
+Multimodal →
+https://arxiv.org/absl
+2503.22517
+• R'MoE (Redundancy-Removal MoE) →
+https://arxiv.org/abs/2507.13107
+https://arxiv.org/abs/2507.13107
+Similarité fonctionnelle & sous-réseaux
+• Identifying Sub-networks via
+Functionally Similar Representations (Gromov-Wasserstein) → https:/l.
+arxiv.org/abs/2410.16484
+• Survey: Similarity of Neural Network
+Models (représentationnelle + fonctionnelle) → https://.
+ar5iv.labs.arxiv.org/html/2305.06329
+• Neural Network Compression by
+Approximate Differential Equivalence →
+https://arxiv.org/abs/2606.01402
+• Layer Redundancy from a functional perspective → https://arxiv.org/abs/
+2604.24938
+Fingerprinting / empreintes de poids robustes
+AWM : Accurate Weight-Matrix
+Fingerprint (LAP + CKA) → https://.
+arxiv.org/abs/2510.06738
+• Spectral Fingerprinting (SVD des GATE weights) → https://arxiv.org/html/.
+2610.30626v1
+• SELF (SVD + Eigenvalue invariants) →
+https://arxiv.org/html/2512.03620
+Pruning / compression par redondance fonctionnelle
+• Cluster-Based Structural Redundancy
+Identification → https:/l.
+pmc.ncbi.nlm.nih.gov/articles/
+PMC98576171.
+• RED (data-free structured compression via redundancies) → https://arxiv.org/. html/2105.14797v1
+• Low functional redundancy network slimming → https:/l.
+
+https://www.sciencedirect.com/science/article/pii/S1110016824017162
+
+
+
+
+
+
+
+
+
 FIN DU CAHIER DES CHARGES FID v0.1
 
