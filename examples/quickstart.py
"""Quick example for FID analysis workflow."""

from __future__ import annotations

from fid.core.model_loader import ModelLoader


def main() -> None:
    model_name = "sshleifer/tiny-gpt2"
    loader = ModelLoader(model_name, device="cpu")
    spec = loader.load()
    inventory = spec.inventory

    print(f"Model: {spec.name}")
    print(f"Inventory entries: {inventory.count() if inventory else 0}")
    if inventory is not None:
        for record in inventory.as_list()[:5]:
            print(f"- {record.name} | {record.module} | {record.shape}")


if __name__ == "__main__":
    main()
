@@ -1,0 +1,39 @@
+"""Command line entry points for FID."""
+
+from __future__ import annotations
+
+import argparse
+
+from fid.core.model_loader import ModelLoader
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="FID - Functional Information Deduplication")
+    parser.add_argument("--model", default="sshleifer/tiny-gpt2", help="Hugging Face model identifier")
+    parser.add_argument("--revision", default="main", help="Model revision or branch")
+    parser.add_argument("--device", default="cpu", help="Torch device: cpu or cuda")
+    parser.add_argument("--limit", type=int, default=10, help="Number of tensors to print in the summary")
+    args = parser.parse_args()
+
+    print("FID - Functional Information Deduplication")
+    print(f"Loading model: {args.model} (rev={args.revision}, device={args.device})")
+
+    loader = ModelLoader(args.model, revision=args.revision, device=args.device)
+    spec = loader.load()
+
+    inventory = spec.inventory
+    if inventory is None:
+        raise RuntimeError("Tensor inventory was not created. The model could not be loaded properly.")
+
+    print(f"Model loaded successfully.")
+    print(f"Kind: {spec.kind}")
+    print(f"Parameters: {spec.metadata.get('num_parameters', 0)}")
+    print(f"Tensor inventory entries: {inventory.count()}")
+    print(f"Modules discovered: {len(loader.list_modules())}")
+    print("Sample tensors:")
+    for record in inventory.as_list()[: args.limit]:
+        print(f"- {record.name} | module={record.module} | shape={record.shape} | dtype={record.dtype}")
+
+
+if __name__ == "__main__":
+    main()

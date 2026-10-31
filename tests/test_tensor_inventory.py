@@ -1,0 +1,27 @@
+"""Tests for the FID tensor inventory."""
+
+from __future__ import annotations
+
+import torch
+from torch import nn
+
+from fid.core.tensor_inventory import TensorInventory
+
+
+class TinyModel(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.linear1 = nn.Linear(4, 8)
+        self.linear2 = nn.Linear(8, 2)
+
+
+def test_tensor_inventory_from_model() -> None:
+    model = TinyModel()
+    inventory = TensorInventory.from_model(model)
+
+    assert inventory.count() == 4
+    names = {tensor.name for tensor in inventory.as_list()}
+    assert "linear1.weight" in names
+    assert "linear1.bias" in names
+    assert "linear2.weight" in names
+    assert "linear2.bias" in names
