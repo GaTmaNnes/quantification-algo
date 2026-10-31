@@ -1,6 +1,6 @@
 # Quantification Algo
 
-Projet de recherche et de prototypage pour l'analyse de redondance fonctionnelle et algorithmiquedans les modèles de langages et architectures de type MoE.
+Projet de recherche et de prototypage pour l'analyse de redondance fonctionnelle et algorithmique dans les modèles de langage et les architectures de type MoE.
 
 ## Objectif
 
@@ -26,7 +26,8 @@ quantification-algo/
 ├── scripts/
 │   ├── setup.sh
 │   ├── check_environment.py
-│   └── run_demo.py
+│   ├── run_demo.py
+│   └── run_cpu_check.py
 ├── fid/
 │   ├── __init__.py
 │   ├── __main__.py
@@ -34,12 +35,17 @@ quantification-algo/
 │   ├── core/
 │   │   ├── __init__.py
 │   │   ├── model_loader.py
-│   │   └── tensor_inventory.py
-│   └── analysis/
-│       ├── __init__.py
-│       ├── weight_fingerprint.py
-│       ├── functional_similarity.py
-│       └── redundancy_detector.py
+│   │   ├── tensor_inventory.py
+│   │   └── graph_extractor.py
+│   ├── analysis/
+│   │   ├── __init__.py
+│   │   ├── weight_fingerprint.py
+│   │   ├── functional_similarity.py
+│   │   └── redundancy_detector.py
+│   └── reports/
+│       └── analysis_report.py
+├── tests/
+│   └── test_tensor_inventory.py
 └── examples/
     └── quickstart.py
 ```
@@ -74,33 +80,45 @@ make setup
 python scripts/check_environment.py
 ```
 
+## Test CPU local
+
+Le projet est conçu pour s'exécuter sur CPU pour les tests de base et les analyses de prototype.
+
+```bash
+python scripts/run_cpu_check.py
+```
+
 ## Utilisation rapide
+
+```bash
+python -m fid --model sshleifer/tiny-gpt2 --device cpu --limit 10
+```
+
+Ou pour un prototype local minimal :
 
 ```bash
 python scripts/run_demo.py
 ```
 
-Ou via le package FID :
-
-```bash
-python -m fid
-```
-
 ## Modules de base
 
 ### Core
-- model_loader.py : charge un modèle et expose les modules sélectionnés
-- tensor_inventory.py : répertorie et décrit les tenseurs du modèle
+- model_loader.py : charge un modèle Hugging Face réel ou un modèle local, puis construit l'inventaire des tenseurs
+- tensor_inventory.py : collecte automatiquement les paramètres et buffers du modèle
+- graph_extractor.py : extrait des informations de graphes de modules pour les analyses de structure
 
 ### Analysis
-- weight_fingerprint.py : calcule des empreintes de poids et métriques de structure
-- functional_similarity.py : compare des sorties ou des représentations fonctionnelles
-- redundancy_detector.py : détecte les éléments redondants ou équivalents
+- weight_fingerprint.py : calcule des métriques de distribution et de sparsity sur les paramètres
+- functional_similarity.py : compare des sorties ou représentations fonctionnelles
+- redundancy_detector.py : détecte des modules ou paramètres similaires via des signatures statistiques
 
-## Exemples
+### Reports
+- analysis_report.py : rend un rapport lisible en terminal
+
+## Tests
 
 ```bash
-python examples/quickstart.py
+pytest -q
 ```
 
 ## Roadmap
@@ -108,11 +126,11 @@ python examples/quickstart.py
 - [x] mise en place de la structure du dépôt
 - [x] scripts d'installation et de validation
 - [x] structure de base du package FID
-- [ ] chargement de modèles Hugging Face
-- [ ] extraction et inventaire des tenseurs
-- [ ] empreintes de poids et comparaison fonctionnelle
-- [ ] détection de redondance structurale / algorithmique
-- [ ] validation expérimentale et rapports
+- [x] chargement réel de modèles Hugging Face
+- [x] extraction et inventaire des tenseurs
+- [x] empreintes de poids et comparaison fonctionnelle
+- [x] détection de redondance structurale / algorithmique basique
+- [ ] validation expérimentale et rapports avancés
 
 ## Licence
 
@@ -126,4 +144,4 @@ Le dépôt GitHub est actuellement privé. Pour le rendre public, il faut l'acti
 - Visibility
 - choisir Public
 
-Ce changement ne peut pas être effectué depuis cette session de tooling sans accès direct à la configuration du dépôt.
+Cette modification ne peut pas être faite depuis cette session sans accès direct aux paramètres du dépôt GitHub.
