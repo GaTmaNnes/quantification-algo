@@ -805,3 +805,483 @@ COMPRENDRE LES CALCULS ET LES INFORMATIONS QUâ€™ILS
 REPRESENTENT, PUIS RECONSTRUIRE UNE ARCHITECTURE
 QUI LES CALCULE AVEC LE MOINS DE RESSOURCES POSSIBLE.</pre>
 
+======
+FID - FUNCTIONAL INFORMATION DEDUPLICATION
+RAPPORT DE VERIFICATION BIBLIOGRAPHIQUE
+Version: 0.3
+Date: 2026-10-31
+Statut: CORRIGE - VALIDATION SCIENTIFIQUE PARTIELLE
+================================================================
+
+1. OBJECTIF
+----------------------------------------------------------------
+
+Completer FID avec les recherches portant sur:
+
+- La redondance des representations internes.
+- La reutilisation du flux residuel.
+- La reconstruction du cache KV.
+- La redondance des normalisations.
+- La redondance temporelle des activations.
+- La redondance entre branches de calcul.
+- L'equivalence entre sous-graphes.
+- La reecriture et l'optimisation des graphes.
+
+Principe fondamental:
+
+Deux composants peuvent etre fonctionnellement equivalents
+sans avoir des poids similaires.
+
+La similarite ne constitue pas une preuve d'equivalence.
+
+================================================================
+2. FLUX RESIDUEL ET REPRESENTATIONS INTERNES
+================================================================
+
+A. TRR - Token Representation Reuse
+
+Publication:
+https://doi.org/10.1007/s40747-026-02564-1
+
+Resultats annonces:
+- Jusqu'a 12.40 % de representations reutilisees.
+- Tests sur Qwen2.5-1.5B-Instruct et Llama-3-8B.
+- Resultats variables selon les benchmarks.
+- Baisse observee sur BoolQ.
+- Detection quadratique en longueur de sequence.
+
+Limite:
+Le cout de detection peut annuler le gain d'execution.
+
+Interet FID:
+- Comparaison des representations entre couches.
+- Detection de representations reutilisables.
+- Mesure du cout de detection.
+- Validation hors distribution.
+
+B. MLSAE - Multi-Layer Sparse Autoencoders
+
+Titre:
+Residual Stream Analysis with Multi-Layer SAEs
+
+Paper:
+https://arxiv.org/abs/2409.04185
+
+OpenReview:
+https://openreview.net/forum?id=XAjfjizaKs
+
+Code:
+https://github.com/tim-lawson/mlsae
+
+Interet FID:
+- Suivre les caracteristiques entre couches.
+- Detecter les representations persistantes.
+- Comparer les directions d'information.
+- Etudier les changements de representation.
+
+C. TALKING HEADS
+
+Titre:
+Talking Heads: Understanding Inter-Layer
+Communication in Transformer Language Models
+
+Paper:
+https://proceedings.neurips.cc/paper_files/paper/2024/hash/70e5444e5f331f7f5431f302110b97af-Abstract-Conference.html
+
+Interet FID:
+- Etudier les communications entre couches.
+- Identifier les sous-espaces communs.
+- Comparer les canaux de communication.
+
+D. DEPTH-ATTENTION
+
+https://aclanthology.org/2026.emnlp-main.2085/
+
+Interet:
+Reutilisation selective de representations
+produites par des couches precedentes.
+
+E. DELTA ATTENTION RESIDUALS
+
+https://arxiv.org/abs/2605.18855
+
+Interet:
+Comparer les contributions des couches plutot
+que les seuls etats residuels cumulatifs.
+
+================================================================
+3. RECONSTRUCTION DU CACHE KV
+================================================================
+
+THE RESIDUAL STREAM IS ALL YOU NEED:
+ON THE REDUNDANCY OF THE KV CACHE
+IN TRANSFORMER INFERENCE
+
+Paper:
+https://arxiv.org/abs/2603.19664
+
+Code:
+https://github.com/Kaleemullahqasim/KV-Direct
+
+Hugging Face:
+https://huggingface.co/papers/2603.19664
+
+Resultats annonces:
+- Reconstruction du KV depuis le flux residuel.
+- Tests sur six modeles de quatre familles.
+- 5 Ko par token sur Gemma 3-4B.
+- 136 Ko par token pour les paires KV dans
+  la configuration comparee.
+- Correspondance exacte des tokens en decodage
+  glouton sur les modeles testes.
+
+Interet FID:
+- Identifier les representations reconstructibles.
+- Mesurer la precision de reconstruction.
+- Comparer stockage et recalcul.
+- Mesurer la memoire maximale.
+- Mesurer les couts de transfert.
+
+Limite:
+Ne pas generaliser automatiquement aux architectures
+hybrides ou aux etats recurrents.
+
+AUTRES REFERENCES:
+
+https://github.com/facebookresearch/context-language-models/blob/main/suffix_cache_reuse/README.md
+
+https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/features/kv-cache.md
+
+https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/features/kv-cache-compression.md
+
+================================================================
+4. REDONDANCE DES NORMALISATIONS
+================================================================
+
+A. LAYERNORM / RMSNORM
+
+https://proceedings.neurips.cc/paper_files/paper/2023/hash/8f1bacee31caf990a4f08d84f0ccb322-Abstract-Conference.html
+
+B. ENJOY YOUR LAYER NORMALIZATION
+
+https://arxiv.org/abs/2605.14521
+
+C. TAPERNORM
+
+https://arxiv.org/abs/2602.10408
+
+Pistes FID:
+- Detecter les normalisations absorbables.
+- Fusionner les transformations lineaires.
+- Detecter les biais absorbables.
+- Identifier les operations eliminables.
+- Verifier les transformations algebriques.
+
+Attention:
+Une transformation exacte sous certaines conditions
+n'est pas une equivalence universelle.
+
+================================================================
+5. REDONDANCE TEMPORELLE DES ACTIVATIONS
+================================================================
+
+A. TADP - TEMPORAL ACTIVATION DYNAMICS PRUNING
+
+Paper:
+https://aclanthology.org/2026.findings-emnlp.1837/
+
+PDF:
+https://aclanthology.org/2026.findings-emnlp.1837.pdf
+
+B. COLA
+
+Paper:
+https://aclanthology.org/2025.emnlp-main.230/
+
+Pistes FID:
+- Mesurer les activations par token.
+- Analyser les pics d'activation.
+- Comparer les contributions temporelles.
+- Detecter les canaux conditionnels.
+- Mesurer la contribution reelle aux sorties.
+
+Limite:
+Un canal rarement actif peut rester indispensable
+dans certains contextes.
+
+================================================================
+6. REDONDANCE DES POIDS
+================================================================
+
+WEIGHT-REDUNDANCY PRUNING
+
+https://arxiv.org/abs/2609.09883
+
+Utilisation FID:
+- Detection initiale de blocs candidats.
+- Comparaison des projections entre couches.
+- Analyse des distributions de poids.
+- Identification de similarites structurelles.
+
+Limite:
+La similarite des poids ne suffit pas a demontrer
+une equivalence fonctionnelle.
+
+================================================================
+7. REDONDANCE DES EMBEDDINGS
+================================================================
+
+ON THE EFFECT OF (NEAR) DUPLICATE SUBWORDS
+IN LANGUAGE MODELLING
+
+https://aclanthology.org/2024.findings-acl.571/
+
+Pistes FID:
+- Comparer les lignes des matrices d'embedding.
+- Detecter les directions communes.
+- Etudier les variantes lexicales.
+- Comparer embeddings d'entree et de sortie.
+- Valider les effets sur les logits.
+
+Limite:
+Des embeddings proches ne sont pas necessairement
+interchangeables dans tous les contextes.
+
+================================================================
+8. REDONDANCE ENTRE BRANCHES DE CALCUL
+================================================================
+
+SPECFOLD
+
+Paper:
+https://arxiv.org/abs/2610.04875
+
+Hugging Face:
+https://huggingface.co/papers/2610.04875
+
+Pistes FID:
+- Comparer les branches d'execution.
+- Detecter les calculs communs.
+- Reutiliser les etats caches.
+- Identifier les divergences.
+- Eviter les recalculs des parties communes.
+
+Limite:
+Travail sur le decodage speculatif des modeles
+de langage par diffusion.
+Ne pas generaliser directement aux LLM autoregressifs.
+
+================================================================
+9. COMPILATION ET REECRITURE DES GRAPHES
+================================================================
+
+LLM COMPILER OPTIMIZATIONS
+
+https://github.com/khatami-mehrdad/llm-compiler-optimizations
+
+Fonctions:
+- Pipeline PyTorch vers MLIR.
+- Reconnaissance des operations Transformer.
+- Fusion de motifs.
+- Separation prefill et decode.
+- Optimisation de la representation intermediaire.
+
+Limite:
+La reduction du nombre de lignes IR ne signifie pas
+une reduction equivalente des FLOPs ou de la latence.
+
+Utilisation FID:
+- Export du graphe.
+- Detection des motifs.
+- Generation des transformations.
+- Verification.
+- Compilation.
+- Mesure sur materiel reel.
+
+================================================================
+10. MODULES A AJOUTER A FID
+================================================================
+
+fid/
+|
++-- analysis/
+|   +-- residual_stream.py
+|   +-- hidden_state_reuse.py
+|   +-- cross_layer_tracking.py
+|   +-- temporal_activation.py
+|   +-- token_embedding_overlap.py
+|   +-- normalization_redundancy.py
+|   +-- cross_operator_equivalence.py
+|   +-- branch_redundancy.py
+|   +-- conditional_redundancy.py
+|   +-- kv_reconstruction.py
+|
++-- transforms/
+|   +-- residual_reconstruction.py
+|   +-- representation_reuse.py
+|   +-- norm_folding.py
+|   +-- operator_rewrite.py
+|   +-- cross_graph_replacement.py
+|   +-- branch_computation_reuse.py
+|
++-- compiler/
+|   +-- graph_ir.py
+|   +-- pattern_matcher.py
+|   +-- graph_rewriter.py
+|   +-- equivalence_verifier.py
+|   +-- backend_dispatch.py
+|
++-- profiler/
+|   +-- detection_overhead.py
+|   +-- reconstruction_cost.py
+|   +-- execution_cost.py
+|   +-- transfer_cost.py
+|
++-- validation/
+    +-- exact_equivalence.py
+    +-- approximate_equivalence.py
+    +-- conditional_validation.py
+    +-- out_of_distribution.py
+    +-- hardware_validation.py
+
+================================================================
+11. CLASSIFICATION DES PREUVES
+================================================================
+
+Chaque resultat FID doit utiliser une categorie:
+
+OBSERVED_SIMILARITY
+    Similarite observee.
+
+REPRESENTATION_REUSE
+    Representation reutilisable.
+
+FUNCTIONAL_EQUIVALENCE
+    Sorties equivalentes sur un domaine teste.
+
+EXACT_ALGORITHMIC_EQUIVALENCE
+    Transformation mathematiquement exacte.
+
+APPROXIMATE_EQUIVALENCE
+    Transformation avec erreur mesuree.
+
+EXECUTION_SPEEDUP
+    Acceleration mesuree sur materiel reel.
+
+MEMORY_REDUCTION
+    Reduction mesuree de la memoire maximale.
+
+Ces categories ne sont pas interchangeables.
+
+================================================================
+12. EXPERIENCES PRIORITAIRES
+================================================================
+
+FID-001:
+Comparer les representations cachees entre couches.
+
+FID-002:
+Tester la reconstruction KV depuis le flux residuel.
+
+FID-003:
+Detecter et fusionner les normalisations absorbables.
+
+FID-004:
+Decouvrir des sous-graphes fonctionnellement equivalents.
+
+FID-005:
+Etudier la redondance temporelle des canaux.
+
+FID-006:
+Compiler et executer les graphes transformes.
+
+FID-007:
+Mesurer le cout de detection et de reconstruction.
+
+================================================================
+13. LACUNES SCIENTIFIQUES
+================================================================
+
+LACUNE A:
+Decouverte automatique d'equivalences entre
+sous-graphes de structures differentes.
+
+LACUNE B:
+Equivalence entre familles d'operations differentes.
+
+LACUNE C:
+Redondance conditionnelle selon le token,
+le contexte, la tache et la profondeur.
+
+LACUNE D:
+Distinction entre information partagee,
+sorties similaires et calculs substituables.
+
+LACUNE E:
+Mesure du gain reel apres reconstruction,
+compilation et execution.
+
+================================================================
+14. CONCLUSION
+================================================================
+
+FID doit depasser la compression classique.
+
+Objectifs:
+
+1. Detecter les informations dupliquees.
+2. Identifier les representations interchangeables.
+3. Detecter les sous-espaces communs.
+4. Identifier les calculs redondants.
+5. Decouvrir les sous-graphes equivalents.
+6. Construire des transformations moins couteuses.
+7. Verifier les transformations.
+8. Mesurer les gains reels.
+
+PIPELINE:
+
+DETECTION
+    |
+ANALYSE FONCTIONNELLE
+    |
+DECOUVERTE D'EQUIVALENCE
+    |
+TRANSFORMATION
+    |
+VALIDATION
+    |
+COMPILATION
+    |
+EXECUTION OPTIMISEE
+
+PRINCIPE FINAL:
+
+Une similarite observee n'est pas une preuve
+d'equivalence.
+
+Une reduction theorique des FLOPs n'est pas
+une preuve d'acceleration.
+
+Une reduction de la taille des poids n'est pas
+une preuve de reduction de la memoire maximale.
+
+================================================================
+15. VERDICT
+================================================================
+
+Statut: ACCEPT AVEC CORRECTIONS
+
+Priorites scientifiques:
+
+1. KV-Direct: reconstruction des representations.
+2. TRR: reutilisation des representations.
+3. Normalization folding: equivalence algebrique.
+4. Cross-operator equivalence: recherche fondamentale.
+5. Graph rewriting: exploitation pratique.
+
+La principale differenciation de FID reste la
+decouverte automatique d'equivalences fonctionnelles
+et algorithmiques entre sous-graphes differents.
+
+FIN DU RAPPORT
+
